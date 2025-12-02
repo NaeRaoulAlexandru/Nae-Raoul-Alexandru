@@ -7,6 +7,7 @@
         "footer footer";
     gap: 1rem;
     margin: 0 auto;
+    padding: auto 1rem;
 }
 
 :root {
