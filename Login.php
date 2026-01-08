@@ -7,24 +7,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $email = trim($_POST['email']);
     $pass = $_POST['password'];
     
-    $stmt = $pdo->prepare("SELECT user_id, name, hashed_password FROM Users WHERE email=?");
-    $stmt->execute([$email]);
-    $user = $stmt->fetch();
-    
-    if ($user && password_verify($pass, $user['hashed_password'])) {
-        $_SESSION['user_id'] = $user['user_id'];
-        $_SESSION['name'] = $user['name'];
-        header("Location: Dashboard.php");
-        exit;
+    // 1. VERIFICARE PHP: Verificăm dacă e Gmail înainte de a interoga baza de date
+    if (!preg_match('/@gmail\.com$/', $email)) {
+        $error = "Te rugăm să folosești o adresă @gmail.com";
     } else {
-        $error = "Email sau parolă incorectă.";
+        // Dacă e Gmail, continuăm cu verificarea userului
+        $stmt = $pdo->prepare("SELECT user_id, name, hashed_password FROM Users WHERE email=?");
+        $stmt->execute([$email]);
+        $user = $stmt->fetch();
+        
+        if ($user && password_verify($pass, $user['hashed_password'])) {
+            $_SESSION['user_id'] = $user['user_id'];
+            $_SESSION['name'] = $user['name'];
+            header("Location: Dashboard.php");
+            exit;
+        } else {
+            $error = "Email sau parolă incorectă.";
+        }
     }
 }
 include 'header.php';
 ?>
 
 <main class="container" style="display:flex; justify-content:center; align-items:center; min-height:60vh;">
-        <div class="card" style="width:100%; max-width:400px; padding:2rem;">
+    <div class="card" style="width:100%; max-width:400px; padding:2rem;">
         <div style="text-align:center; margin-bottom:1.5rem;">
             <i class="fa-solid fa-right-to-bracket" style="font-size:2rem; color:var(--primary);"></i>
             <h2>Bine ai revenit!</h2>
@@ -40,7 +46,11 @@ include 'header.php';
         <form method="POST">
             <div style="margin-bottom:1rem;">
                 <label style="font-weight:500; font-size:0.9rem;">Email</label>
-                <input type="email" name="email" required placeholder="nume@exemplu.com" style="margin-top:5px;">
+                <input type="email" name="email" required 
+                       pattern=".+@gmail\.com" 
+                       title="Te rugăm să folosești o adresă @gmail.com"
+                       placeholder="nume@gmail.com" 
+                       style="margin-top:5px;">
             </div>
             
             <div style="margin-bottom:1.5rem;">

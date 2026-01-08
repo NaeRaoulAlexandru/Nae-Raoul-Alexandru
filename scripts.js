@@ -23,29 +23,23 @@ document.addEventListener('DOMContentLoaded', function () {
 // --- 2. AJAX Toggle Status (Global Function) ---
 // Această funcție este apelată din checkbox-urile HTML (onclick="toggleStatus(...)")
 function toggleStatus(type, id, el) {
-    // Salvăm starea inițială în caz că serverul dă eroare
     const originalState = el.checked;
-
     fetch('ajax_update.php', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: `type=${type}&id=${id}`
     })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            // Reîncărcăm pagina pentru a actualiza graficele și culorile
-            // (Fiind o aplicație PHP clasică, reload-ul asigură consistența datelor)
-            location.reload(); 
+    .then(r => r.json())
+    .then(d => {
+        if (d.success) {
+            if (d.leveledUp) alert(`🎉 LEVEL UP! Ai ajuns la nivelul ${d.newLevel}!`);
+            
+            // --- ALERTĂ NOUĂ PENTRU BADGE ---
+            if (d.newBadge) alert(`🏆 INSIGNĂ NOUĂ DEBLOCATĂ! Verifică Dashboard-ul.`);
+            
+            location.reload();
         } else {
-            // Revenim la starea inițială dacă serverul nu a validat schimbarea
             el.checked = !originalState;
-            alert('Nu s-a putut actualiza statusul. Încearcă din nou.');
         }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        el.checked = !originalState;
-        alert('Eroare de conexiune.');
     });
 }

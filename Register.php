@@ -8,25 +8,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $email = trim($_POST['email']);
     $pass = $_POST['password'];
     
-    $stmt = $pdo->prepare("SELECT user_id FROM Users WHERE email=?");
-    $stmt->execute([$email]);
-    if ($stmt->fetch()) {
-        $error = "Acest email este deja utilizat.";
+    // 1. VERIFICARE PHP: Dacă emailul nu se termină în @gmail.com, dăm eroare
+    if (!preg_match('/@gmail\.com$/', $email)) {
+        $error = "Sunt acceptate doar adresele @gmail.com";
     } else {
-        $hash = password_hash($pass, PASSWORD_DEFAULT);
-        $ins = $pdo->prepare("INSERT INTO Users (name, email, hashed_password) VALUES (?, ?, ?)");
-        if ($ins->execute([$name, $email, $hash])) {
-            header("Location: Login.php");
-            exit;
+        // Dacă e Gmail, continuăm cu verificarea în baza de date
+        $stmt = $pdo->prepare("SELECT user_id FROM Users WHERE email=?");
+        $stmt->execute([$email]);
+        
+        if ($stmt->fetch()) {
+            $error = "Acest email este deja utilizat.";
         } else {
-            $error = "A apărut o eroare. Încearcă din nou.";
+            $hash = password_hash($pass, PASSWORD_DEFAULT);
+            $ins = $pdo->prepare("INSERT INTO Users (name, email, hashed_password) VALUES (?, ?, ?)");
+            if ($ins->execute([$name, $email, $hash])) {
+                header("Location: Login.php");
+                exit;
+            } else {
+                $error = "A apărut o eroare. Încearcă din nou.";
+            }
         }
     }
 }
 include 'header.php';
 ?>
 
-<main class="container" style="display:flex; justify-content:center; align-items:center; min-height:60vh;">    <div class="card" style="width:100%; max-width:400px; padding:2rem;">
+<main class="container" style="display:flex; justify-content:center; align-items:center; min-height:60vh;">
+    <div class="card" style="width:100%; max-width:400px; padding:2rem;">
         <div style="text-align:center; margin-bottom:1.5rem;">
             <i class="fa-solid fa-user-plus" style="font-size:2rem; color:var(--primary);"></i>
             <h2>Creează Cont</h2>
@@ -47,7 +55,11 @@ include 'header.php';
 
             <div style="margin-bottom:1rem;">
                 <label style="font-weight:500; font-size:0.9rem;">Email</label>
-                <input type="email" name="email" required placeholder="nume@exemplu.com" style="margin-top:5px;">
+                <input type="email" name="email" required 
+                       pattern=".+@gmail\.com" 
+                       title="Te rugăm să folosești o adresă @gmail.com"
+                       placeholder="nume@gmail.com" 
+                       style="margin-top:5px;">
             </div>
             
             <div style="margin-bottom:1.5rem;">

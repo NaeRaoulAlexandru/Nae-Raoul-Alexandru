@@ -6,7 +6,7 @@ if (!isset($_SESSION['user_id'])) { echo "<script>location.href='Login.php'</scr
 $uid = $_SESSION['user_id'];
 $today = date('Y-m-d');
 
-// Quick Add Logic... (păstrăm logica existentă)
+// --- 1. PROCESARE QUICK ADD (Păstrat) ---
 if (isset($_POST['quick_add'])) {
     $title = trim($_POST['title']);
     $date = $_POST['due_date'] ?: null;
@@ -17,7 +17,7 @@ if (isset($_POST['quick_add'])) {
     }
 }
 
-// Interogări DB...
+// --- 2. INTEROGĂRI STATISTICI (Păstrat) ---
 $stats = $pdo->prepare("SELECT COUNT(*) as tot, SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) as fin FROM Tasks WHERE user_id=? AND due_date=?");
 $stats->execute([$uid, $today]);
 $s = $stats->fetch();
@@ -28,10 +28,25 @@ $hFin = $pdo->prepare("SELECT COUNT(DISTINCT habit_id) FROM Habit_Logs WHERE com
 $hFin->execute([$today, $uid]); 
 $hDone = $hFin->fetchColumn(); $hRem = ($hTot - $hDone) > 0 ? ($hTot - $hDone) : 0;
 
+// --- 3. INTEROGARE AGENDA (Păstrat) ---
 $tasks = $pdo->prepare("SELECT * FROM Tasks WHERE user_id=? AND due_date=? ORDER BY status ASC");
 $tasks->execute([$uid, $today]);
 $habits = $pdo->prepare("SELECT h.habit_id, h.title, (SELECT COUNT(*) FROM Habit_Logs l WHERE l.habit_id=h.habit_id AND l.completed_date=?) as done FROM Habits h WHERE user_id=?");
 $habits->execute([$today, $uid]);
+
+// --- 4. LOGICĂ NOUĂ: PRELUARE INSIGNE ---
+$myBadges = $pdo->prepare("SELECT badge_code, earned_at FROM User_Badges WHERE user_id=? ORDER BY earned_at DESC");
+$myBadges->execute([$uid]);
+$earnedBadges = $myBadges->fetchAll();
+
+// Definim cum arată fiecare insignă (Configurare)
+$badgeDef = [
+    'first_task' => ['icon'=>'fa-check', 'color'=>'#3b82f6', 'name'=>'Început Bun', 'desc'=>'Primul task completat'],
+    'task_master_10' => ['icon'=>'fa-list-check', 'color'=>'#8b5cf6', 'name'=>'Productiv', 'desc'=>'10 Task-uri completate'],
+    'task_master_50' => ['icon'=>'fa-fire', 'color'=>'#ef4444', 'name'=>'Expert', 'desc'=>'50 Task-uri completate'],
+    'first_journal' => ['icon'=>'fa-pen-nib', 'color'=>'#ec4899', 'name'=>'Dragă Jurnalule', 'desc'=>'Prima intrare scrisă'],
+    'writer_5' => ['icon'=>'fa-book-open', 'color'=>'#f59e0b', 'name'=>'Scriitor', 'desc'=>'5 intrări în jurnal']
+];
 ?>
 
 <main class="container">
@@ -83,6 +98,41 @@ $habits->execute([$today, $uid]);
     </div>
 
     <section class="card" style="margin-top:0;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+            <h3><i class="fa-solid fa-trophy" style="color:#eab308;"></i> Trofeele Mele</h3>
+            <?php if(!empty($earnedBadges)): ?>
+                <span class="text-muted" style="font-size:0.85rem;"><?php echo count($earnedBadges); ?> insigne</span>
+            <?php endif; ?>
+        </div>
+
+        <div style="display:flex; gap:1rem; flex-wrap:wrap;">
+            <?php foreach($earnedBadges as $b): 
+                $code = $b['badge_code'];
+                // Dacă insigna e definită în lista noastră, o afișăm
+                if(isset($badgeDef[$code])): 
+                    $info = $badgeDef[$code];
+            ?>
+                <div style="background:#f9fafb; border:1px solid #e5e7eb; border-radius:10px; padding:10px 15px; display:flex; align-items:center; gap:12px; min-width:220px; flex:1;">
+                    <div style="background:<?php echo $info['color']; ?>20; width:45px; height:45px; border-radius:50%; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+                        <i class="fa-solid <?php echo $info['icon']; ?>" style="color:<?php echo $info['color']; ?>; font-size:1.2rem;"></i>
+                    </div>
+                    <div>
+                        <strong style="display:block; font-size:0.95rem; color:var(--text-main);"><?php echo $info['name']; ?></strong>
+                        <small class="text-muted" style="font-size:0.8rem; line-height:1.2; display:block;"><?php echo $info['desc']; ?></small>
+                    </div>
+                </div>
+            <?php endif; endforeach; ?>
+
+            <?php if(empty($earnedBadges)): ?>
+                <div style="padding:1rem; width:100%; text-align:center; color:var(--text-muted); background:#f9fafb; border-radius:8px;">
+                    <i class="fa-regular fa-star" style="margin-bottom:5px; font-size:1.5rem;"></i>
+                    <p style="margin:0;">Încă nu ai câștigat insigne. Completează task-uri și scrie în jurnal pentru a le debloca!</p>
+                </div>
+            <?php endif; ?>
+        </div>
+    </section>
+
+    <section class="card" style="margin-top:1.5rem;">
         <div style="display:flex; align-items:center; gap:10px; margin-bottom:1rem;">
             <h3><i class="fa-regular fa-calendar-check"></i> Agenda Zilei</h3>
             <span class="text-muted" style="font-size:0.9rem;">(<?php echo date('d M Y'); ?>)</span>
@@ -142,7 +192,7 @@ $habits->execute([$today, $uid]);
 </main>
 
 <script>
-// Chart Config - Clean Look
+// Chart Config
 const commonOptions = { cutout: '70%', responsive: true, plugins: { legend: { display: false } } };
 new Chart(document.getElementById('cTasks'), {
     type: 'doughnut',
