@@ -9,28 +9,60 @@ $y = date('Y');
 $daysInMonth = date('t'); 
 $monthName = date('F Y');
 
-// --- LOGICĂ ADĂUGARE / ȘTERGERE / TOGGLE ---
+// --- 1. ADĂUGARE / ȘTERGERE OBICEI ---
 if (isset($_POST['add_h'])) { 
     $pdo->prepare("INSERT INTO Habits (user_id, title) VALUES (?, ?)")->execute([$uid, trim($_POST['title'])]); 
-    // Refresh pentru a actualiza calculele
     echo "<script>location.href='Habits.php'</script>";
 }
 if (isset($_POST['del_h'])) { 
     $pdo->prepare("DELETE FROM Habits WHERE habit_id=? AND user_id=?")->execute([$_POST['hid'], $uid]); 
     echo "<script>location.href='Habits.php'</script>";
 }
-// Toggle logic (via link)
+
+// --- 2. TOGGLE LOGIC + UPDATE XP & LEVEL ---
 if (isset($_GET['tg'])) {
     $dt = sprintf("%s-%s-%02d", $y, $m, $_GET['d']);
     $hid = $_GET['tg'];
+    
+    // Verificăm starea actuală
     $exists = $pdo->prepare("SELECT log_id FROM Habit_Logs WHERE habit_id=? AND completed_date=?");
     $exists->execute([$hid, $dt]);
-    if ($l = $exists->fetch()) $pdo->prepare("DELETE FROM Habit_Logs WHERE log_id=?")->execute([$l['log_id']]);
-    else $pdo->prepare("INSERT INTO Habit_Logs (habit_id, completed_date) VALUES (?, ?)")->execute([$hid, $dt]);
+    $logEntry = $exists->fetch();
+
+    $xpChange = 0; // Variabilă pentru a urmări XP-ul
+
+    if ($logEntry) {
+        // --- DEBIFARE (Ștergem log-ul) ---
+        $pdo->prepare("DELETE FROM Habit_Logs WHERE log_id=?")->execute([$logEntry['log_id']]);
+        $xpChange = -5; // Scădem XP
+    } else {
+        // --- BIFARE (Adăugăm log-ul) ---
+        $own = $pdo->prepare("SELECT habit_id FROM Habits WHERE habit_id=? AND user_id=?");
+        $own->execute([$hid, $uid]);
+        if ($own->fetch()) {
+            $pdo->prepare("INSERT INTO Habit_Logs (habit_id, completed_date) VALUES (?, ?)")->execute([$hid, $dt]);
+            $xpChange = 5; // Adăugăm XP
+        }
+    }
+
+    // --- LOGICA DE LEVEL UP (Adăugată) ---
+    if ($xpChange != 0) {
+        $uStmt = $pdo->prepare("SELECT xp, level FROM Users WHERE user_id=?");
+        $uStmt->execute([$uid]);
+        $userData = $uStmt->fetch();
+
+        if ($userData) {
+            $newXP = max(0, $userData['xp'] + $xpChange);
+            $newLevel = floor($newXP / 100) + 1;
+            
+            $pdo->prepare("UPDATE Users SET xp=?, level=? WHERE user_id=?")->execute([$newXP, $newLevel, $uid]);
+        }
+    }
+
     echo "<script>location.href='Habits.php'</script>";
 }
 
-// --- DATE PENTRU TABEL ---
+// --- 3. DATE PENTRU TABEL ---
 $habits = $pdo->prepare("SELECT * FROM Habits WHERE user_id=?"); 
 $habits->execute([$uid]);
 $hList = $habits->fetchAll();
@@ -40,22 +72,24 @@ $logs = $pdo->prepare("SELECT habit_id, DAY(completed_date) as d FROM Habit_Logs
 $logs->execute([$m, $y, $uid]);
 $map = []; foreach($logs->fetchAll() as $l) $map[$l['habit_id']][$l['d']] = true;
 
-// --- DATE PENTRU GRAFICE (Săptămână vs Lună) ---
+// --- 4. DATE PENTRU GRAFICE ---
 
-// 1. Statistici Săptămâna Asta
-// "YEARWEEK(date, 1)" începe săptămâna de luni
+// A. Săptămâna Asta (Calcul PHP precis Luni-Duminică)
+$startWeek = date('Y-m-d', strtotime('monday this week'));
+$endWeek   = date('Y-m-d', strtotime('sunday this week'));
+
 $weekStats = $pdo->prepare("
     SELECT COUNT(*) FROM Habit_Logs 
     WHERE habit_id IN (SELECT habit_id FROM Habits WHERE user_id=?) 
-    AND YEARWEEK(completed_date, 1) = YEARWEEK(CURDATE(), 1)
+    AND completed_date BETWEEN ? AND ?
 ");
-$weekStats->execute([$uid]);
+$weekStats->execute([$uid, $startWeek, $endWeek]);
 $weekDone = $weekStats->fetchColumn();
-// Total posibil săptămânal = Nr. Habits * 7 zile
+
 $weekTotal = $totalHabits * 7; 
 $weekRemaining = max(0, $weekTotal - $weekDone);
 
-// 2. Statistici Luna Asta
+// B. Luna Asta
 $monthStats = $pdo->prepare("
     SELECT COUNT(*) FROM Habit_Logs 
     WHERE habit_id IN (SELECT habit_id FROM Habits WHERE user_id=?) 
@@ -63,10 +97,8 @@ $monthStats = $pdo->prepare("
 ");
 $monthStats->execute([$uid, $m, $y]);
 $monthDone = $monthStats->fetchColumn();
-// Total posibil lunar = Nr. Habits * Zile în lună
 $monthTotal = $totalHabits * $daysInMonth; 
 $monthRemaining = max(0, $monthTotal - $monthDone);
-
 ?>
 
 <main class="container">
@@ -137,7 +169,7 @@ $monthRemaining = max(0, $monthTotal - $monthDone);
         <section class="card" style="flex:1; min-width:300px; text-align:center;">
             <h3><i class="fa-solid fa-calendar-week" style="color:var(--primary);"></i> Săptămâna Asta</h3>
             <?php if($totalHabits > 0): ?>
-                <div class="chart-container" style="height:180px; width:180px;">
+                <div class="chart-container" style="height:180px; width:180px; margin: 0 auto;">
                     <canvas id="chartWeek"></canvas>
                 </div>
                 <p style="margin-top:10px; font-weight:600;">
@@ -152,7 +184,7 @@ $monthRemaining = max(0, $monthTotal - $monthDone);
         <section class="card" style="flex:1; min-width:300px; text-align:center;">
             <h3><i class="fa-regular fa-calendar-days" style="color:var(--success);"></i> Luna Asta</h3>
             <?php if($totalHabits > 0): ?>
-                <div class="chart-container" style="height:180px; width:180px;">
+                <div class="chart-container" style="height:180px; width:180px; margin: 0 auto;">
                     <canvas id="chartMonth"></canvas>
                 </div>
                 <p style="margin-top:10px; font-weight:600;">
@@ -209,7 +241,7 @@ $monthRemaining = max(0, $monthTotal - $monthDone);
                     labels: ['Completat', 'Rămas'],
                     datasets: [{
                         data: [<?php echo $weekDone; ?>, <?php echo $weekRemaining; ?>],
-                        backgroundColor: ['#4f46e5', '#e5e7eb'], // Indigo vs Gray
+                        backgroundColor: ['#4f46e5', '#e5e7eb'], 
                         borderWidth: 0
                     }]
                 },
@@ -223,7 +255,7 @@ $monthRemaining = max(0, $monthTotal - $monthDone);
                     labels: ['Completat', 'Rămas'],
                     datasets: [{
                         data: [<?php echo $monthDone; ?>, <?php echo $monthRemaining; ?>],
-                        backgroundColor: ['#10b981', '#e5e7eb'], // Green vs Gray
+                        backgroundColor: ['#10b981', '#e5e7eb'],
                         borderWidth: 0
                     }]
                 },

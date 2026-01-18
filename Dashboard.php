@@ -17,7 +17,7 @@ if (isset($_POST['quick_add'])) {
     }
 }
 
-// --- 2. INTEROGĂRI STATISTICI (Păstrat) ---
+// --- 2. INTEROGĂRI STATISTICI  ---
 $stats = $pdo->prepare("SELECT COUNT(*) as tot, SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) as fin FROM Tasks WHERE user_id=? AND due_date=?");
 $stats->execute([$uid, $today]);
 $s = $stats->fetch();
@@ -28,7 +28,7 @@ $hFin = $pdo->prepare("SELECT COUNT(DISTINCT habit_id) FROM Habit_Logs WHERE com
 $hFin->execute([$today, $uid]); 
 $hDone = $hFin->fetchColumn(); $hRem = ($hTot - $hDone) > 0 ? ($hTot - $hDone) : 0;
 
-// --- 3. INTEROGARE AGENDA (Păstrat) ---
+// --- 3. INTEROGARE AGENDA  ---
 $tasks = $pdo->prepare("SELECT * FROM Tasks WHERE user_id=? AND due_date=? ORDER BY status ASC");
 $tasks->execute([$uid, $today]);
 $habits = $pdo->prepare("SELECT h.habit_id, h.title, (SELECT COUNT(*) FROM Habit_Logs l WHERE l.habit_id=h.habit_id AND l.completed_date=?) as done FROM Habits h WHERE user_id=?");
